@@ -403,23 +403,25 @@ const gstSchema = Joi.object({
   amount: Joi.number().positive().required(),
   checkNo: Joi.string().allow(''),
   pfmsDate: Joi.date().allow(null),
+  file: Joi.allow(null),
 });
 
 const insuranceSchema = Joi.object({
   date: Joi.date().required(),
   amount: Joi.number().positive().required(),
-  // file: Joi.allow(null), // Assuming file is a string (e.g., file path or URL)
+  file: Joi.allow(null),
 });
 
 const kamgarSchema = Joi.object({
   date: Joi.date().required(),
   amount: Joi.number().positive().required(),
-  // file: Joi.allow(null),
+  file: Joi.allow(null),
 });
 
 const royaltySchema = Joi.object({
   date: Joi.date().required(),
   amount: Joi.number().positive().required(),
+  file: Joi.allow(null),
 });
 
 const itSchema = Joi.object({
@@ -432,6 +434,7 @@ const itSchema = Joi.object({
       'string.pattern.base': 'Please enter a valid PAN number',
     }),
   amount: Joi.number().positive().required(),
+  file: Joi.allow(null),
 });
 
 

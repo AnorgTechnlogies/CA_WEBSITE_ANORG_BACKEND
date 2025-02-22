@@ -1505,7 +1505,7 @@ const sendForgotPasswordCode = async (req, res) => {
     let info = await transport.sendMail({
       from: process.env.NODEMAILER_SENDING_EMAIL_ADDRESS,
       to: existingAdmin.adminEmailId,
-      subject: "Psycortex: Password Reset Code",
+      subject: "PITAX : Password Reset Code",
       html: `
       <div style="font-family: Arial, sans-serif; color: #333;">
         <div style="max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #eaeaea; border-radius: 8px; background-color: #1c1c1c; color: #f4f4f4;">
@@ -1522,7 +1522,7 @@ const sendForgotPasswordCode = async (req, res) => {
   
           <div style="border-top: 1px solid #eaeaea; margin-top: 20px; padding-top: 10px;">
             <p style="font-size: 12px; text-align: center; color: #999;">
-              &copy; ${new Date().getFullYear()} Pitax Private Limited. All rights reserved.
+              &copy; ${new Date().getFullYear()} ANORG Technologies Private Limited. All rights reserved.
             </p>
           </div>
         </div>

@@ -509,24 +509,11 @@ const updateDoctorProfile = async (req, res) => {
     try {
       await sendEmailNotification(
         updatedDoctor.doctorEmailId,
-        "Welcome to Psycortex Pvt. Ltd.",
-        `Dear Counsellor ${updatedDoctor.doctorName},\n\n Your account has been Updated Successfully.\n\nBest Regards,\nPsycortex Pvt. Ltd.`
+        "Welcome to PITAX Pvt. Ltd.",
+        `Dear Counsellor ${updatedDoctor.doctorName},\n\n Your account has been Updated Successfully.\n\nBest Regards,\nPITAX Pvt. Ltd.`
       );
     } catch (e) {
       console.log("Error Occured in Node Mailer", e);
-    }
-
-    // For Whatsapp message
-    try {
-      const doctorWhatsappNo = doctorData.doctorWhatsappNo;
-      const doctorName = doctorData.doctorName;
-
-      const smsResponse = await axios.get(
-        `https://int.chatway.in/api/send-msg?username=psycor&number= 91${doctorData.doctorWhatsappNo}&message=Dear Counsellor ${doctorName},  Your Profile has been Updated successfully... \n \n \n Thanku Regards Psycortex Pvt. Ltd. &token=V1hzNGpGNFRjeEN4ZGk4T2FGMk51UT09`
-      );
-      console.log("Whatsapp SMS  Response:", smsResponse.data);
-    } catch (smsError) {
-      console.error("Error Sending Whatsapp SMS:", smsError);
     }
   } catch (error) {
     console.error("Error in profile update: ", error.message);
