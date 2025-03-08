@@ -30,6 +30,7 @@ import {
   updateRoyaltyDocumentByAdmin,
   updateInsuranceDocumentByAdmin,
   updateKaamgarDocumentByAdmin,
+  getAllDeductionsByGrampanchayatId,
 } from "../controllers/adminController.js";
 // import upload from '../utils/multer.js';
 import { upload } from "../middleware/multer.js";
@@ -47,6 +48,7 @@ adminRouter.get("/getAllStaff", getAllStaff);
 adminRouter.post("/add-gramPanchayat", upload.single("gpImage"), addGrampanchayat);
 adminRouter.get("/allGrampanchayats", getAllGrampanchayats);
 
+adminRouter.get("/getAllDeductions/:grampanchayatId", getAllDeductionsByGrampanchayatId);
 
 adminRouter.get("/gst/:grampanchayatId", adminIdentifier, getAllGSTEntries);
 adminRouter.get("/insurance/:grampanchayatId", adminIdentifier, getAllInsuranceEntries);

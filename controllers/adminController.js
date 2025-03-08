@@ -569,6 +569,170 @@ const getAllStaff = async (req, res) => {
   }
 };
 
+
+const getAllDeductionsByGrampanchayatId = async (req, res) => {
+  try {
+    // Get grampanchayatId from path parameters
+    const { grampanchayatId } = req.params;
+
+    // Get query parameters for filtering
+    const { 
+      startDate, 
+      endDate, 
+      gstNo, 
+      paymentMode,
+      seenByAdmin,
+      sortBy = 'date',
+      sortOrder = 'desc',
+      page = 1,
+      limit = 10
+    } = req.query;
+
+    // Build filter object
+    const filter = {};
+
+    // Add grampanchayatId filter - this is the key change
+    if (grampanchayatId) {
+      filter.grampanchayats = new mongoose.Types.ObjectId(grampanchayatId);
+    }
+
+    // Add date range filter if provided
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) {
+        // Set end date to end of day
+        const endOfDay = new Date(endDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        filter.date.$lte = endOfDay;
+      }
+    }
+
+    // Add GST number filter if provided
+    if (gstNo) filter.gstNo = gstNo;
+
+    // Add payment mode filter if provided
+    if (paymentMode && ["online", "cheque"].includes(paymentMode)) {
+      filter.paymentMode = paymentMode;
+    }
+
+    // Add seenByAdmin filter if provided
+    if (seenByAdmin !== undefined) {
+      filter.seenByAdmin = seenByAdmin === 'true';
+    }
+
+    // Calculate pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const limitValue = parseInt(limit);
+
+    // Determine sort direction
+    const sortDirection = sortOrder === 'asc' ? 1 : -1;
+    const sortOptions = {};
+    sortOptions[sortBy] = sortDirection;
+
+    // Get total count for pagination
+    const totalCount = await allDeductionModel.countDocuments(filter);
+
+    // Fetch deductions with pagination and sorting
+    const deductions = await allDeductionModel.find(filter)
+      .populate('grampanchayats', 'grampanchayat district tahsil state') // Updated field names based on your schema
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(limitValue);
+
+    // Calculate total amounts by deduction type
+    const totalAmounts = await allDeductionModel.aggregate([
+      { $match: filter },
+      { $group: {
+          _id: null,
+          totalGST: {
+            $sum: {
+              $reduce: {
+                input: "$gstEntries",
+                initialValue: 0,
+                in: { $add: ["$$value", "$$this.amount"] }
+              }
+            }
+          },
+          totalRoyalty: {
+            $sum: {
+              $reduce: {
+                input: "$royaltyEntries",
+                initialValue: 0,
+                in: { $add: ["$$value", "$$this.amount"] }
+              }
+            }
+          },
+          totalIT: {
+            $sum: {
+              $reduce: {
+                input: "$itEntries",
+                initialValue: 0,
+                in: { $add: ["$$value", "$$this.amount"] }
+              }
+            }
+          },
+          totalKamgaar: {
+            $sum: {
+              $reduce: {
+                input: "$kamgaarEntries",
+                initialValue: 0,
+                in: { $add: ["$$value", "$$this.amount"] }
+              }
+            }
+          },
+          totalInsurance: {
+            $sum: {
+              $reduce: {
+                input: "$insuranceEntries",
+                initialValue: 0,
+                in: { $add: ["$$value", "$$this.amount"] }
+              }
+            }
+          },
+          grandTotal: { $sum: "$totalAmount" }
+        }
+      }
+    ]);
+
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalCount / limitValue);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+    
+    // Return the response
+    res.status(200).json({
+      success: true,
+      message: "Deductions fetched successfully",
+      data: {
+        deductions,
+        pagination: {
+          total: totalCount,
+          totalPages,
+          currentPage: parseInt(page),
+          limit: limitValue,
+          hasNextPage,
+          hasPrevPage
+        },
+        summary: totalAmounts.length > 0 ? totalAmounts[0] : {
+          totalGST: 0,
+          totalRoyalty: 0,
+          totalIT: 0,
+          totalKamgaar: 0,
+          totalInsurance: 0,
+          grandTotal: 0
+        }
+      }
+    });
+  } catch (error) {
+    console.error("Error in getAllDeductions:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Internal Server Error"
+    });
+  }
+};
+
 const getAllGSTEntries = async (req, res) => {
   try {
     const grampanchayatId = req.params.grampanchayatId;
@@ -817,9 +981,7 @@ const updateRoyaltyEntry = async (req, res) => {
   }
 };
 
-
-
-// upload reciept send by admin controllor 
+// upload reciept send by admin controllor
 const updateGSTDocumentByAdmin = async (req, res) => {
   try {
     const { id } = req.params;
@@ -829,7 +991,7 @@ const updateGSTDocumentByAdmin = async (req, res) => {
     if (!existingGST) {
       return res.status(404).json({
         success: false,
-        message: "GST record not found"
+        message: "GST record not found",
       });
     }
 
@@ -847,15 +1009,15 @@ const updateGSTDocumentByAdmin = async (req, res) => {
           }
 
           // Generate custom filename using GST amount
-          const originalExtension = req.file.originalname.split('.').pop();
+          const originalExtension = req.file.originalname.split(".").pop();
           const customFileName = `${existingGST.amount}.${originalExtension}`;
 
           // Upload new document to cloudinary with custom filename
           const cloudinaryResponse = await cloudinary.uploader.upload(
             documentTempPath,
-            { 
+            {
               folder: "GST_ADMIN_DOCUMENTS",
-              public_id: `GST_ADMIN_DOCUMENTS/${customFileName.split('.')[0]}` // Remove extension for public_id
+              public_id: `GST_ADMIN_DOCUMENTS/${customFileName.split(".")[0]}`, // Remove extension for public_id
             }
           );
 
@@ -863,14 +1025,14 @@ const updateGSTDocumentByAdmin = async (req, res) => {
             fs.unlinkSync(documentTempPath);
             return res.status(400).json({
               success: false,
-              message: "Failed to upload document to Cloudinary"
+              message: "Failed to upload document to Cloudinary",
             });
           }
 
           // Update GST record with new document details
           existingGST.uploadDocumentbyAdmin = {
             public_id: cloudinaryResponse.public_id,
-            url: cloudinaryResponse.secure_url
+            url: cloudinaryResponse.secure_url,
           };
 
           // Clean up temporary file
@@ -882,7 +1044,7 @@ const updateGSTDocumentByAdmin = async (req, res) => {
           return res.status(500).json({
             success: false,
             message: "An error occurred while uploading the document",
-            error: error.message
+            error: error.message,
           });
         }
       }
@@ -897,14 +1059,14 @@ const updateGSTDocumentByAdmin = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Document uploaded successfully by admin",
-      result: updatedGST
+      result: updatedGST,
     });
   } catch (error) {
     console.error("Error in updateGSTDocumentByAdmin:", error);
     res.status(500).json({
       success: false,
       message: "Error updating GST document. Please try again later.",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -918,7 +1080,7 @@ const updatITDocumentByAdmin = async (req, res) => {
     if (!existingIT) {
       return res.status(404).json({
         success: false,
-        message: "IT record not found"
+        message: "IT record not found",
       });
     }
 
@@ -936,15 +1098,15 @@ const updatITDocumentByAdmin = async (req, res) => {
           }
 
           // Generate custom filename using GST amount
-          const originalExtension = req.file.originalname.split('.').pop();
+          const originalExtension = req.file.originalname.split(".").pop();
           const customFileName = `${existingIT.amount}.${originalExtension}`;
 
           // Upload new document to cloudinary with custom filename
           const cloudinaryResponse = await cloudinary.uploader.upload(
             documentTempPath,
-            { 
+            {
               folder: "IT_ADMIN_DOCUMENTS",
-              public_id: `IT_ADMIN_DOCUMENTS/${customFileName.split('.')[0]}` // Remove extension for public_id
+              public_id: `IT_ADMIN_DOCUMENTS/${customFileName.split(".")[0]}`, // Remove extension for public_id
             }
           );
 
@@ -952,14 +1114,14 @@ const updatITDocumentByAdmin = async (req, res) => {
             fs.unlinkSync(documentTempPath);
             return res.status(400).json({
               success: false,
-              message: "Failed to upload document to Cloudinary"
+              message: "Failed to upload document to Cloudinary",
             });
           }
 
           // Update GST record with new document details
           existingIT.uploadDocumentbyAdmin = {
             public_id: cloudinaryResponse.public_id,
-            url: cloudinaryResponse.secure_url
+            url: cloudinaryResponse.secure_url,
           };
 
           // Clean up temporary file
@@ -971,7 +1133,7 @@ const updatITDocumentByAdmin = async (req, res) => {
           return res.status(500).json({
             success: false,
             message: "An error occurred while uploading the document",
-            error: error.message
+            error: error.message,
           });
         }
       }
@@ -986,14 +1148,14 @@ const updatITDocumentByAdmin = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Document uploaded successfully by admin",
-      result: updatedIT
+      result: updatedIT,
     });
   } catch (error) {
     console.error("Error in updateITDocumentByAdmin:", error);
     res.status(500).json({
       success: false,
       message: "Error updating IT document. Please try again later.",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -1007,7 +1169,7 @@ const updateKaamgarDocumentByAdmin = async (req, res) => {
     if (!existingKaamgar) {
       return res.status(404).json({
         success: false,
-        message: "Kaamgar record not found"
+        message: "Kaamgar record not found",
       });
     }
 
@@ -1025,15 +1187,17 @@ const updateKaamgarDocumentByAdmin = async (req, res) => {
           }
 
           // Generate custom filename using GST amount
-          const originalExtension = req.file.originalname.split('.').pop();
+          const originalExtension = req.file.originalname.split(".").pop();
           const customFileName = `${existingKaamgar.amount}.${originalExtension}`;
 
           // Upload new document to cloudinary with custom filename
           const cloudinaryResponse = await cloudinary.uploader.upload(
             documentTempPath,
-            { 
+            {
               folder: "KAAMGAR_ADMIN_DOCUMENTS",
-              public_id: `KAAMGAR_ADMIN_DOCUMENTS/${customFileName.split('.')[0]}` // Remove extension for public_id
+              public_id: `KAAMGAR_ADMIN_DOCUMENTS/${
+                customFileName.split(".")[0]
+              }`, // Remove extension for public_id
             }
           );
 
@@ -1041,14 +1205,14 @@ const updateKaamgarDocumentByAdmin = async (req, res) => {
             fs.unlinkSync(documentTempPath);
             return res.status(400).json({
               success: false,
-              message: "Failed to upload document to Cloudinary"
+              message: "Failed to upload document to Cloudinary",
             });
           }
 
           // Update GST record with new document details
           existingKaamgar.uploadDocumentbyAdmin = {
             public_id: cloudinaryResponse.public_id,
-            url: cloudinaryResponse.secure_url
+            url: cloudinaryResponse.secure_url,
           };
 
           // Clean up temporary file
@@ -1060,7 +1224,7 @@ const updateKaamgarDocumentByAdmin = async (req, res) => {
           return res.status(500).json({
             success: false,
             message: "An error occurred while uploading the document",
-            error: error.message
+            error: error.message,
           });
         }
       }
@@ -1075,14 +1239,14 @@ const updateKaamgarDocumentByAdmin = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Document uploaded successfully by admin",
-      result: updatedKaamgar
+      result: updatedKaamgar,
     });
   } catch (error) {
     console.error("Error in updateKaamgarDocumentByAdmin:", error);
     res.status(500).json({
       success: false,
       message: "Error updating Kaamgar document. Please try again later.",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -1096,7 +1260,7 @@ const updateRoyaltyDocumentByAdmin = async (req, res) => {
     if (!existingRoyalty) {
       return res.status(404).json({
         success: false,
-        message: "GST record not found"
+        message: "GST record not found",
       });
     }
 
@@ -1114,15 +1278,17 @@ const updateRoyaltyDocumentByAdmin = async (req, res) => {
           }
 
           // Generate custom filename using GST amount
-          const originalExtension = req.file.originalname.split('.').pop();
+          const originalExtension = req.file.originalname.split(".").pop();
           const customFileName = `${existingRoyalty.amount}.${originalExtension}`;
 
           // Upload new document to cloudinary with custom filename
           const cloudinaryResponse = await cloudinary.uploader.upload(
             documentTempPath,
-            { 
+            {
               folder: "ROYALTY_ADMIN_DOCUMENTS",
-              public_id: `ROYALTY_ADMIN_DOCUMENTS/${customFileName.split('.')[0]}` // Remove extension for public_id
+              public_id: `ROYALTY_ADMIN_DOCUMENTS/${
+                customFileName.split(".")[0]
+              }`, // Remove extension for public_id
             }
           );
 
@@ -1130,14 +1296,14 @@ const updateRoyaltyDocumentByAdmin = async (req, res) => {
             fs.unlinkSync(documentTempPath);
             return res.status(400).json({
               success: false,
-              message: "Failed to upload document to Cloudinary"
+              message: "Failed to upload document to Cloudinary",
             });
           }
 
           // Update GST record with new document details
           existingRoyalty.uploadDocumentbyAdmin = {
             public_id: cloudinaryResponse.public_id,
-            url: cloudinaryResponse.secure_url
+            url: cloudinaryResponse.secure_url,
           };
 
           // Clean up temporary file
@@ -1149,7 +1315,7 @@ const updateRoyaltyDocumentByAdmin = async (req, res) => {
           return res.status(500).json({
             success: false,
             message: "An error occurred while uploading the document",
-            error: error.message
+            error: error.message,
           });
         }
       }
@@ -1164,14 +1330,14 @@ const updateRoyaltyDocumentByAdmin = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Document uploaded successfully by admin",
-      result: updatedRoyalty
+      result: updatedRoyalty,
     });
   } catch (error) {
     console.error("Error in updateRoyaltyDocumentByAdmin:", error);
     res.status(500).json({
       success: false,
       message: "Error updating Royalty document. Please try again later.",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -1185,7 +1351,7 @@ const updateInsuranceDocumentByAdmin = async (req, res) => {
     if (!existingInsurance) {
       return res.status(404).json({
         success: false,
-        message: "Insuranmce record not found"
+        message: "Insuranmce record not found",
       });
     }
 
@@ -1203,15 +1369,17 @@ const updateInsuranceDocumentByAdmin = async (req, res) => {
           }
 
           // Generate custom filename using GST amount
-          const originalExtension = req.file.originalname.split('.').pop();
+          const originalExtension = req.file.originalname.split(".").pop();
           const customFileName = `${existingInsurance.amount}.${originalExtension}`;
 
           // Upload new document to cloudinary with custom filename
           const cloudinaryResponse = await cloudinary.uploader.upload(
             documentTempPath,
-            { 
+            {
               folder: "INSURANCE_ADMIN_DOCUMENTS",
-              public_id: `INSURANCE_ADMIN_DOCUMENTS/${customFileName.split('.')[0]}` // Remove extension for public_id
+              public_id: `INSURANCE_ADMIN_DOCUMENTS/${
+                customFileName.split(".")[0]
+              }`, // Remove extension for public_id
             }
           );
 
@@ -1219,14 +1387,14 @@ const updateInsuranceDocumentByAdmin = async (req, res) => {
             fs.unlinkSync(documentTempPath);
             return res.status(400).json({
               success: false,
-              message: "Failed to upload document to Cloudinary"
+              message: "Failed to upload document to Cloudinary",
             });
           }
 
           // Update GST record with new document details
           existingInsurance.uploadDocumentbyAdmin = {
             public_id: cloudinaryResponse.public_id,
-            url: cloudinaryResponse.secure_url
+            url: cloudinaryResponse.secure_url,
           };
 
           // Clean up temporary file
@@ -1238,7 +1406,7 @@ const updateInsuranceDocumentByAdmin = async (req, res) => {
           return res.status(500).json({
             success: false,
             message: "An error occurred while uploading the document",
-            error: error.message
+            error: error.message,
           });
         }
       }
@@ -1253,19 +1421,17 @@ const updateInsuranceDocumentByAdmin = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Document uploaded successfully by admin",
-      result: updatedInsurance
+      result: updatedInsurance,
     });
-
   } catch (error) {
     console.error("Error in updateInsuranceDocumentByAdmin:", error);
     res.status(500).json({
       success: false,
       message: "Error updating Insurance document. Please try again later.",
-      error: error.message
+      error: error.message,
     });
   }
 };
-
 
 const getAgreementsByGrampanchayat = async (req, res) => {
   try {
@@ -1528,7 +1694,6 @@ const sendForgotPasswordCode = async (req, res) => {
         </div>
       </div>
     `,
-  
     });
 
     if (info.accepted.includes(existingAdmin.adminEmailId)) {
@@ -1646,6 +1811,8 @@ const verifyForgotPasswordCode = async (req, res) => {
 };
 
 import XLSX from "xlsx";
+import allDeductionModel from "../models/allDeductionModel.js";
+import mongoose from "mongoose";
 
 const getExportAllDeductionData = async (req, res) => {
   try {
@@ -1753,6 +1920,7 @@ export {
   addGrampanchayat,
   getAllGrampanchayats,
   getAllStaff,
+  getAllDeductionsByGrampanchayatId,
   getAllGSTEntries,
   getAllInsuranceEntries,
   getAllKamgarEntries,
@@ -1763,14 +1931,11 @@ export {
   updateKamgarEntry,
   updateITEntry,
   updateRoyaltyEntry,
-
   updateGSTDocumentByAdmin,
   updatITDocumentByAdmin,
   updateKaamgarDocumentByAdmin,
   updateRoyaltyDocumentByAdmin,
   updateInsuranceDocumentByAdmin,
-
-
   getAgreementsByGrampanchayat,
   sendVerificationCode,
   verifyVerificationCode,

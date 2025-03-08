@@ -16,7 +16,6 @@ const GSTSchema = new mongoose.Schema({
     public_id: String,
     url: String
   },
-
   
   grampanchayats: [{
     type: mongoose.Schema.Types.ObjectId,

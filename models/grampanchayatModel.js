@@ -27,13 +27,18 @@ const GrampanchayatSchema = new mongoose.Schema({
     required: true, 
     unique: true 
   },
-  gpMobileNumber: { 
+  gpMobileNumber: {
     type: String,
     required: true
   },
   
   gramAdhikariName : {
     type: String,
+    required: true
+  },
+
+  gpAgreementAmount : {
+    type: Number,
     required: true
   },
 

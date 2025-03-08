@@ -28,7 +28,8 @@ import {
   updateAgreementStatus,
   deleteAgreementStatus,
   sendForgotPasswordCodeForStaff,
-  verifyForgotPasswordCodeForStaff
+  verifyForgotPasswordCodeForStaff,
+  addDeduction
 } from "../controllers/staffController.js";
 
 import {staffIdentifier} from "../middleware/adminIdentification.js";
@@ -43,6 +44,8 @@ staffRouter.get("/get-staff", staffIdentifier, getStaff);
 staffRouter.post("/add-gramPanchayat", upload.single("gpImage"),staffIdentifier, addGrampanchayat);
 staffRouter.get("/getStaffGrampanchayats", staffIdentifier, getStaffGrampanchayats);
 staffRouter.get("/getSingleGrampanchayatById/:gpId", getSingleGrampanchayatById);
+
+staffRouter.post("/add-deduction",  upload.single("file"), addDeduction);
 
 // Profile Management Routes
 staffRouter.put(

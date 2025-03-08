@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import doctorModel from "../models/staffModel.js";
+import allDeductionModel from "../models/allDeductionModel.js"
 import {
   comparePassword,
   hashPassword,
@@ -135,6 +136,7 @@ const addGrampanchayat = async (req, res) => {
     district,
     tahsil,
     grampanchayat,
+    gpAgreementAmount,
     grampanchayatPassword,
   } = req.body;
 
@@ -160,6 +162,7 @@ const addGrampanchayat = async (req, res) => {
       district,
       tahsil,
       grampanchayat,
+      gpAgreementAmount,
       grampanchayatPassword,
     });
 
@@ -170,8 +173,8 @@ const addGrampanchayat = async (req, res) => {
       });
     }
 
-      // Hash the password
-      const hashedPassword = await hashPassword(grampanchayatPassword, 12);
+    // Hash the password
+    const hashedPassword = await hashPassword(grampanchayatPassword, 12);
 
     // Grampanchayat data to be saved
     const grampanchayatData = {
@@ -182,7 +185,8 @@ const addGrampanchayat = async (req, res) => {
       district,
       tahsil,
       grampanchayat,
-      grampanchayatPassword : hashedPassword,
+      gpAgreementAmount,
+      grampanchayatPassword: hashedPassword,
       createdAt: Date.now(),
     };
 
@@ -266,30 +270,33 @@ const getStaffGrampanchayats = async (req, res) => {
     const staffId = req.staff.staffId;
 
     // Fetch the staff member and populate the grampanchayats field
-    const staffWithGrampanchayats = await staffModel.findById(staffId)
-      .select('grampanchayats staffName') // Only select necessary fields
+    const staffWithGrampanchayats = await staffModel
+      .findById(staffId)
+      .select("grampanchayats staffName") // Only select necessary fields
       .populate({
-        path: 'grampanchayats',
-        select: '-createdAt -updatedAt' // Exclude timestamp fields from grampanchayats
+        path: "grampanchayats",
+        select: "-createdAt -updatedAt", // Exclude timestamp fields from grampanchayats
       });
 
     if (!staffWithGrampanchayats) {
       return res.status(404).json({
         success: false,
-        message: "Staff member not found"
+        message: "Staff member not found",
       });
     }
 
     // Check if the staff has any assigned grampanchayats
-    if (!staffWithGrampanchayats.grampanchayats || 
-        staffWithGrampanchayats.grampanchayats.length === 0) {
+    if (
+      !staffWithGrampanchayats.grampanchayats ||
+      staffWithGrampanchayats.grampanchayats.length === 0
+    ) {
       return res.status(200).json({
         success: true,
         message: "No grampanchayats assigned to this staff member",
         data: {
           staffName: staffWithGrampanchayats.staffName,
-          grampanchayats: []
-        }
+          grampanchayats: [],
+        },
       });
     }
 
@@ -298,15 +305,14 @@ const getStaffGrampanchayats = async (req, res) => {
       success: true,
       data: {
         staffName: staffWithGrampanchayats.staffName,
-        grampanchayats: staffWithGrampanchayats.grampanchayats
-      }
+        grampanchayats: staffWithGrampanchayats.grampanchayats,
+      },
     });
-
   } catch (error) {
     console.error("Error fetching staff grampanchayats: ", error.message);
     return res.status(500).json({
       success: false,
-      message: `Error fetching grampanchayats: ${error.message}`
+      message: `Error fetching grampanchayats: ${error.message}`,
     });
   }
 };
@@ -314,7 +320,7 @@ const getStaffGrampanchayats = async (req, res) => {
 const getSingleGrampanchayatById = async (req, res) => {
   try {
     const { gpId } = req.params;
-    console.log(req.params,"this is parameter");
+    console.log(req.params, "this is parameter");
 
     // Check if gpId is provided
     if (!gpId) {
@@ -351,7 +357,6 @@ const getSingleGrampanchayatById = async (req, res) => {
     });
   }
 };
-
 
 const logoutDoctor = async (req, res) => {
   res
@@ -758,7 +763,7 @@ const sendForgotPasswordCodeForStaff = async (req, res) => {
         codeValue,
         process.env.HMAC_VERIFICATION_CODE_SECRET
       );
-      
+
       // Fixed field names to match schema
       existingStaff.forgetPasswordCode = hashedCodeValue;
       existingStaff.forgetPasswordCodeValidation = Date.now();
@@ -831,7 +836,7 @@ const verifyForgotPasswordCodeForStaff = async (req, res) => {
       existingStaff.forgetPasswordCode = undefined;
       existingStaff.forgetPasswordCodeValidation = undefined;
       await existingStaff.save();
-      
+
       return res.status(400).json({
         success: false,
         message: "Code has expired!",
@@ -843,7 +848,7 @@ const verifyForgotPasswordCodeForStaff = async (req, res) => {
       providedCode,
       process.env.HMAC_VERIFICATION_CODE_SECRET
     );
-    
+
     // Fixed comparison logic - was comparing existingStaff with itself
     if (hashedProvidedCode === existingStaff.forgetPasswordCode) {
       // Hash the new password
@@ -885,6 +890,379 @@ import { RoyaltyModel } from "../models/royaltyModel.js";
 import { ITModel } from "../models/ITModel.js";
 import { AgreementStatusModel } from "../models/agreementStatusModel.js";
 
+const addDeduction = async (req, res) => {
+  const {
+    date,
+    gstNo,
+    paymentMode,
+    gstEntries,
+    royaltyEntries,
+    itEntries,
+    kamgaarEntries,
+    insuranceEntries,
+    totalAmount,
+    checkNo,
+    pfmsDate,
+    grampanchayats,
+  } = req.body;
+  
+  console.log("Request Body : ", req.body);
+  
+  try {
+    // Validate required fields
+    if (!date || !gstNo || !paymentMode || !grampanchayats) {
+      return res.status(400).json({
+        success: false,
+        message: "Date, GST number, payment mode, and grampanchayats are required",
+      });
+    }
+    
+    // Validate paymentMode
+    if (!["online", "cheque"].includes(paymentMode)) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment mode must be either 'online' or 'cheque'",
+      });
+    }
+    
+    // If paymentMode is cheque, checkNo is required
+    if (paymentMode === "cheque" && !checkNo) {
+      return res.status(400).json({
+        success: false,
+        message: "Check number is required for cheque payments",
+      });
+    }
+    
+    // Verify if at least one deduction type has entries
+    const hasDeductions = (
+      (gstEntries && gstEntries.length > 0) ||
+      (royaltyEntries && royaltyEntries.length > 0) ||
+      (itEntries && itEntries.length > 0) ||
+      (kamgaarEntries && kamgaarEntries.length > 0) ||
+      (insuranceEntries && insuranceEntries.length > 0)
+    );
+    
+    if (!hasDeductions) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one deduction entry is required",
+      });
+    }
+    
+    // Verify if referenced grampanchayats exist
+    const grampanchayatExists = await GrampanchayatModel.find({
+      '_id': { $in: grampanchayats }
+    });
+    
+    // Handle document upload if present
+    let documentData = {};
+    if (req.file) {
+      try {
+        const { path: documentTempPath } = req.file;
+        const cloudinaryResponse = await cloudinary.uploader.upload(
+          documentTempPath,
+          { folder: "DEDUCTION_DOCUMENTS" }
+        );
+        
+        if (!cloudinaryResponse || cloudinaryResponse.error) {
+          fs.unlinkSync(documentTempPath);
+          return res.status(500).json({
+            success: false,
+            message: "Failed to upload document to Cloudinary",
+          });
+        }
+        
+        documentData = {
+          public_id: cloudinaryResponse.public_id,
+          url: cloudinaryResponse.secure_url,
+        };
+        
+        fs.unlinkSync(documentTempPath);
+      } catch (error) {
+        if (req.file && req.file.path) fs.unlinkSync(req.file.path);
+        return res.status(500).json({
+          success: false,
+          message: "Error occurred while uploading the document",
+        });
+      }
+    }
+    
+    // Prepare deduction data
+    const deductionData = {
+      date: new Date(date),
+      gstNo,
+      paymentMode,
+      gstEntries: parseDeductionEntries(gstEntries),
+      royaltyEntries: parseDeductionEntries(royaltyEntries),
+      itEntries: parseDeductionEntries(itEntries),
+      kamgaarEntries: parseDeductionEntries(kamgaarEntries),
+      insuranceEntries: parseDeductionEntries(insuranceEntries),
+      // Fix for totalAmount - use the first value if it's an array or calculate
+      totalAmount: Array.isArray(totalAmount) 
+        ? parseFloat(totalAmount[0]) 
+        : (totalAmount 
+            ? parseFloat(totalAmount) 
+            : calculateTotalAmount(
+                parseDeductionEntries(gstEntries), 
+                parseDeductionEntries(royaltyEntries), 
+                parseDeductionEntries(itEntries), 
+                parseDeductionEntries(kamgaarEntries), 
+                parseDeductionEntries(insuranceEntries)
+              )
+          ),
+      checkNo: paymentMode === "cheque" ? checkNo : undefined,
+      pfmsDate: pfmsDate ? new Date(pfmsDate) : undefined,
+      document: documentData.public_id ? documentData : undefined,
+      grampanchayats,
+      seenByAdmin: false,
+    };
+    
+    // Create and save new deduction
+    const newDeduction = new allDeductionModel(deductionData);
+    await newDeduction.save();
+    
+    res.status(201).json({
+      success: true,
+      message: "Deduction record added successfully",
+      data: newDeduction,
+    });
+  } catch (error) {
+    console.error("Error in addDeduction:", error);
+    if (req.file && req.file.path) fs.unlinkSync(req.file.path);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Internal Server Error",
+    });
+  }
+};
+
+// Helper function to parse deduction entries from FormData
+function parseDeductionEntries(entriesData) {
+  if (!entriesData) return [];
+  
+  // If entriesData is already an array (from JSON)
+  if (Array.isArray(entriesData)) {
+    return entriesData.map(entry => ({
+      amount: parseFloat(entry.amount) || 0,
+      partyName: entry.partyName,
+      pan: entry.pan // Only relevant for IT entries
+    }));
+  }
+  
+  // If entriesData is a string (from FormData)
+  try {
+    const parsedEntries = JSON.parse(entriesData);
+    return Array.isArray(parsedEntries) ? parsedEntries.map(entry => ({
+      amount: parseFloat(entry.amount) || 0,
+      partyName: entry.partyName,
+      pan: entry.pan
+    })) : [];
+  } catch (e) {
+    console.error("Error parsing entries:", e);
+    return [];
+  }
+}
+
+// Helper function to calculate total amount
+function calculateTotalAmount(gstEntries, royaltyEntries, itEntries, kamgaarEntries, insuranceEntries) {
+  let total = 0;
+  
+  // Sum up all GST entries
+  if (gstEntries && Array.isArray(gstEntries)) {
+    total += gstEntries.reduce((sum, entry) => sum + (parseFloat(entry.amount) || 0), 0);
+  }
+  
+  // Sum up all Royalty entries
+  if (royaltyEntries && Array.isArray(royaltyEntries)) {
+    total += royaltyEntries.reduce((sum, entry) => sum + (parseFloat(entry.amount) || 0), 0);
+  }
+  
+  // Sum up all IT entries
+  if (itEntries && Array.isArray(itEntries)) {
+    total += itEntries.reduce((sum, entry) => sum + (parseFloat(entry.amount) || 0), 0);
+  }
+  
+  // Sum up all Kamgaar entries
+  if (kamgaarEntries && Array.isArray(kamgaarEntries)) {
+    total += kamgaarEntries.reduce((sum, entry) => sum + (parseFloat(entry.amount) || 0), 0);
+  }
+  
+  // Sum up all Insurance entries
+  if (insuranceEntries && Array.isArray(insuranceEntries)) {
+    total += insuranceEntries.reduce((sum, entry) => sum + (parseFloat(entry.amount) || 0), 0);
+  }
+  
+  return total;
+}
+
+const getAllDeductions = async (req, res) => {
+  try {
+    // Get query parameters for filtering
+    const { 
+      startDate, 
+      endDate, 
+      gstNo, 
+      paymentMode, 
+      grampanchayat,
+      seenByAdmin,
+      sortBy = 'date',
+      sortOrder = 'desc',
+      page = 1,
+      limit = 10
+    } = req.query;
+
+    // Build filter object
+    const filter = {};
+
+    // Add date range filter if provided
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) {
+        // Set end date to end of day
+        const endOfDay = new Date(endDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        filter.date.$lte = endOfDay;
+      }
+    }
+
+    // Add GST number filter if provided
+    if (gstNo) filter.gstNo = gstNo;
+
+    // Add payment mode filter if provided
+    if (paymentMode && ["online", "cheque"].includes(paymentMode)) {
+      filter.paymentMode = paymentMode;
+    }
+
+    // Add grampanchayat filter if provided
+    if (grampanchayat) {
+      filter.grampanchayats = mongoose.Types.ObjectId(grampanchayat);
+    }
+
+    // Add seenByAdmin filter if provided
+    if (seenByAdmin !== undefined) {
+      filter.seenByAdmin = seenByAdmin === 'true';
+    }
+
+    // Calculate pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const limitValue = parseInt(limit);
+
+    // Determine sort direction
+    const sortDirection = sortOrder === 'asc' ? 1 : -1;
+    const sortOptions = {};
+    sortOptions[sortBy] = sortDirection;
+
+    // Get total count for pagination
+    const totalCount = await allDeductionModel.countDocuments(filter);
+
+    // Fetch deductions with pagination and sorting
+    const deductions = await allDeductionModel.find(filter)
+      .populate('grampanchayats', 'name district taluka') // Populate grampanchayat references
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(limitValue);
+
+    // Calculate total amounts by deduction type
+    const totalAmounts = await allDeductionModel.aggregate([
+      { $match: filter },
+      { $group: {
+          _id: null,
+          totalGST: {
+            $sum: {
+              $reduce: {
+                input: "$gstEntries",
+                initialValue: 0,
+                in: { $add: ["$$value", "$$this.amount"] }
+              }
+            }
+          },
+          totalRoyalty: {
+            $sum: {
+              $reduce: {
+                input: "$royaltyEntries",
+                initialValue: 0,
+                in: { $add: ["$$value", "$$this.amount"] }
+              }
+            }
+          },
+          totalIT: {
+            $sum: {
+              $reduce: {
+                input: "$itEntries",
+                initialValue: 0,
+                in: { $add: ["$$value", "$$this.amount"] }
+              }
+            }
+          },
+          totalKamgaar: {
+            $sum: {
+              $reduce: {
+                input: "$kamgaarEntries",
+                initialValue: 0,
+                in: { $add: ["$$value", "$$this.amount"] }
+              }
+            }
+          },
+          totalInsurance: {
+            $sum: {
+              $reduce: {
+                input: "$insuranceEntries",
+                initialValue: 0,
+                in: { $add: ["$$value", "$$this.amount"] }
+              }
+            }
+          },
+          grandTotal: { $sum: "$totalAmount" }
+        }
+      }
+    ]);
+
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalCount / limitValue);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+    
+    // Return the response
+    res.status(200).json({
+      success: true,
+      message: "Deductions fetched successfully",
+      data: {
+        deductions,
+        pagination: {
+          total: totalCount,
+          totalPages,
+          currentPage: parseInt(page),
+          limit: limitValue,
+          hasNextPage,
+          hasPrevPage
+        },
+        summary: totalAmounts.length > 0 ? totalAmounts[0] : {
+          totalGST: 0,
+          totalRoyalty: 0,
+          totalIT: 0,
+          totalKamgaar: 0,
+          totalInsurance: 0,
+          grandTotal: 0
+        }
+      }
+    });
+  } catch (error) {
+    console.error("Error in getAllDeductions:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Internal Server Error"
+    });
+  }
+};
+
+
+
+
+
+
+
+
 const createGSTEntry = async (req, res) => {
   const { grampanchayatId } = req.params;
   try {
@@ -897,14 +1275,7 @@ const createGSTEntry = async (req, res) => {
       });
     }
 
-    const {
-      date,
-      gstNo,
-      gstPartyName,
-      amount,
-      checkNo,
-      pfmsDate,
-    } = value;
+    const { date, gstNo, gstPartyName, amount, checkNo, pfmsDate } = value;
 
     const gstEntry = new GSTModel({
       date,
@@ -917,12 +1288,12 @@ const createGSTEntry = async (req, res) => {
       document: {
         public_id: "",
         url: "",
-      }
+      },
     });
 
     if (req.file) {
       const { path: documentTempPath } = req.file;
-      
+
       if (documentTempPath) {
         try {
           const cloudinaryResponse = await cloudinary.uploader.upload(
@@ -955,18 +1326,18 @@ const createGSTEntry = async (req, res) => {
     }
 
     const savedEntry = await gstEntry.save();
-    const populatedEntry = await savedEntry.populate('grampanchayats');
+    const populatedEntry = await savedEntry.populate("grampanchayats");
 
     res.status(201).json({
       success: true,
       message: "GST entry created successfully",
-      data: populatedEntry
+      data: populatedEntry,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
       message: "Error creating GST entry",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -983,10 +1354,7 @@ const createInsuranceEntry = async (req, res) => {
       });
     }
 
-    const {
-      date,
-      amount,
-    } = value;
+    const { date, amount } = value;
 
     const insuranceEntry = new InsuranceModel({
       date,
@@ -995,12 +1363,12 @@ const createInsuranceEntry = async (req, res) => {
       document: {
         public_id: "",
         url: "",
-      }
+      },
     });
 
     if (req.file) {
       const { path: documentTempPath } = req.file;
-      
+
       if (documentTempPath) {
         try {
           const cloudinaryResponse = await cloudinary.uploader.upload(
@@ -1033,18 +1401,18 @@ const createInsuranceEntry = async (req, res) => {
     }
 
     const savedEntry = await insuranceEntry.save();
-    const populatedEntry = await savedEntry.populate('grampanchayats');
+    const populatedEntry = await savedEntry.populate("grampanchayats");
 
     res.status(201).json({
       success: true,
       message: "Insurance entry created successfully",
-      data: populatedEntry
+      data: populatedEntry,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
       message: "Error creating insurance entry",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -1061,10 +1429,7 @@ const createKamgarEntry = async (req, res) => {
       });
     }
 
-    const {
-      date,
-      amount,
-    } = req.body;
+    const { date, amount } = req.body;
 
     const kamgarEntry = new KamgarModel({
       date,
@@ -1073,12 +1438,12 @@ const createKamgarEntry = async (req, res) => {
       document: {
         public_id: "",
         url: "",
-      }
+      },
     });
 
     if (req.file) {
       const { path: documentTempPath } = req.file;
-      
+
       if (documentTempPath) {
         try {
           const cloudinaryResponse = await cloudinary.uploader.upload(
@@ -1111,18 +1476,18 @@ const createKamgarEntry = async (req, res) => {
     }
 
     const savedEntry = await kamgarEntry.save();
-    const populatedEntry = await savedEntry.populate('grampanchayats');
+    const populatedEntry = await savedEntry.populate("grampanchayats");
 
     res.status(201).json({
       success: true,
       message: "Kamgar entry created successfully",
-      data: populatedEntry
+      data: populatedEntry,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
       message: "Error creating kamgar entry",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -1139,10 +1504,7 @@ const createRoyaltyEntry = async (req, res) => {
       });
     }
 
-    const {
-      date,
-      amount
-    } = value;
+    const { date, amount } = value;
 
     const royaltyEntry = new RoyaltyModel({
       date,
@@ -1151,12 +1513,12 @@ const createRoyaltyEntry = async (req, res) => {
       document: {
         public_id: "",
         url: "",
-      }
+      },
     });
 
     if (req.file) {
       const { path: documentTempPath } = req.file;
-      
+
       if (documentTempPath) {
         try {
           const cloudinaryResponse = await cloudinary.uploader.upload(
@@ -1189,18 +1551,18 @@ const createRoyaltyEntry = async (req, res) => {
     }
 
     const savedEntry = await royaltyEntry.save();
-    const populatedEntry = await savedEntry.populate('grampanchayats');
+    const populatedEntry = await savedEntry.populate("grampanchayats");
 
     res.status(201).json({
       success: true,
       message: "Royalty entry created successfully",
-      data: populatedEntry
+      data: populatedEntry,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
       message: "Error creating royalty entry",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -1217,12 +1579,7 @@ const createITEntry = async (req, res) => {
       });
     }
 
-    const {
-      date,
-      partyName,
-      pan,
-      amount
-    } = value;
+    const { date, partyName, pan, amount } = value;
 
     const itEntry = new ITModel({
       date,
@@ -1233,12 +1590,12 @@ const createITEntry = async (req, res) => {
       document: {
         public_id: "",
         url: "",
-      }
+      },
     });
 
     if (req.file) {
       const { path: documentTempPath } = req.file;
-      
+
       if (documentTempPath) {
         try {
           const cloudinaryResponse = await cloudinary.uploader.upload(
@@ -1271,18 +1628,18 @@ const createITEntry = async (req, res) => {
     }
 
     const savedEntry = await itEntry.save();
-    const populatedEntry = await savedEntry.populate('grampanchayats');
+    const populatedEntry = await savedEntry.populate("grampanchayats");
 
     res.status(201).json({
       success: true,
       message: "IT entry created successfully",
-      data: populatedEntry
+      data: populatedEntry,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
       message: "Error creating IT entry",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -1291,12 +1648,28 @@ const getEntriesByGrampanchayat = async (req, res) => {
   const { grampanchayatId } = req.params;
 
   try {
-    const [gstEntries, insuranceEntries, kamgarEntries, royaltyEntries, itEntries] = await Promise.all([
-      GSTModel.find({ grampanchayats: grampanchayatId }).populate('grampanchayats'),
-      InsuranceModel.find({ grampanchayats: grampanchayatId }).populate('grampanchayats'),
-      KamgarModel.find({ grampanchayats: grampanchayatId }).populate('grampanchayats'),
-      RoyaltyModel.find({ grampanchayats: grampanchayatId }).populate('grampanchayats'),
-      ITModel.find({ grampanchayats: grampanchayatId }).populate('grampanchayats')
+    const [
+      gstEntries,
+      insuranceEntries,
+      kamgarEntries,
+      royaltyEntries,
+      itEntries,
+    ] = await Promise.all([
+      GSTModel.find({ grampanchayats: grampanchayatId }).populate(
+        "grampanchayats"
+      ),
+      InsuranceModel.find({ grampanchayats: grampanchayatId }).populate(
+        "grampanchayats"
+      ),
+      KamgarModel.find({ grampanchayats: grampanchayatId }).populate(
+        "grampanchayats"
+      ),
+      RoyaltyModel.find({ grampanchayats: grampanchayatId }).populate(
+        "grampanchayats"
+      ),
+      ITModel.find({ grampanchayats: grampanchayatId }).populate(
+        "grampanchayats"
+      ),
     ]);
 
     res.status(200).json({
@@ -1306,13 +1679,13 @@ const getEntriesByGrampanchayat = async (req, res) => {
         insurance: insuranceEntries,
         kamgar: kamgarEntries,
         royalty: royaltyEntries,
-        it: itEntries
-      }
+        it: itEntries,
+      },
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -1451,7 +1824,6 @@ const deleteKamgarEntry = async (req, res) => {
   }
 };
 
-
 const createAgreementStatus = async (req, res) => {
   try {
     const {
@@ -1461,17 +1833,18 @@ const createAgreementStatus = async (req, res) => {
       paymentReceived,
       paymentReceivedDate,
       grampanchayats,
-      agreementAmount
+      agreementAmount,
     } = req.body;
 
     // Validate required fields
     if (!financialYear || !date || !grampanchayats) {
       return res.status(400).json({
         success: false,
-        message: "Financial year, date, and Grampanchayat ID are required fields",
+        message:
+          "Financial year, date, and Grampanchayat ID are required fields",
       });
     }
-    
+
     // Validate financial year format
     const fyRegex = /^\d{4}-\d{4}$/;
     if (!fyRegex.test(financialYear)) {
@@ -1483,13 +1856,13 @@ const createAgreementStatus = async (req, res) => {
 
     // Convert date string to Date object
     const agreementDate = new Date(date);
-    
+
     // Check if an agreement already exists for this financial year
-    const existingAgreement = await AgreementStatusModel.findOne({ 
-      financialYear, 
-      grampanchayats: { $in: [grampanchayats] } 
+    const existingAgreement = await AgreementStatusModel.findOne({
+      financialYear,
+      grampanchayats: { $in: [grampanchayats] },
     });
-    
+
     if (existingAgreement) {
       return res.status(400).json({
         success: false,
@@ -1521,7 +1894,9 @@ const createAgreementStatus = async (req, res) => {
       date: agreementDate,
       oCCopyReceived: oCCopyReceived === "true" || oCCopyReceived === true,
       paymentReceived: paymentReceived === "true" || paymentReceived === true,
-      paymentReceivedDate: paymentReceivedDate ? new Date(paymentReceivedDate) : undefined,
+      paymentReceivedDate: paymentReceivedDate
+        ? new Date(paymentReceivedDate)
+        : undefined,
       agreementAmount: agreementAmount ? Number(agreementAmount) : undefined,
       uploadedOCCopy,
       grampanchayats: [grampanchayats],
@@ -1556,7 +1931,7 @@ const getAgreementStatus = async (req, res) => {
     }
 
     const agreements = await AgreementStatusModel.find({
-      grampanchayats: gpId
+      grampanchayats: gpId,
     }).lean();
 
     res.status(200).json({
@@ -1564,7 +1939,6 @@ const getAgreementStatus = async (req, res) => {
       message: "Agreement status retrieved successfully",
       data: agreements,
     });
-
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -1592,7 +1966,9 @@ const updateAgreementStatus = async (req, res) => {
       // Get existing document to delete old file if exists
       const existingAgreement = await AgreementStatusModel.findById(id);
       if (existingAgreement?.uploadedOCCopy?.public_id) {
-        await cloudinary.uploader.destroy(existingAgreement.uploadedOCCopy.public_id);
+        await cloudinary.uploader.destroy(
+          existingAgreement.uploadedOCCopy.public_id
+        );
       }
 
       const result = await cloudinary.uploader.upload(
@@ -1628,7 +2004,6 @@ const updateAgreementStatus = async (req, res) => {
       message: "Agreement status updated successfully",
       data: updatedAgreement,
     });
-
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -1649,7 +2024,7 @@ const deleteAgreementStatus = async (req, res) => {
     }
 
     const agreement = await AgreementStatusModel.findById(id);
-    
+
     if (!agreement) {
       return res.status(404).json({
         success: false,
@@ -1668,7 +2043,6 @@ const deleteAgreementStatus = async (req, res) => {
       success: true,
       message: "Agreement status deleted successfully",
     });
-
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -1678,6 +2052,11 @@ const deleteAgreementStatus = async (req, res) => {
 };
 
 export {
+
+  addDeduction,
+  getAllDeductions,
+
+
   loginStaff,
   getStaff,
   addGrampanchayat,
@@ -1690,24 +2069,19 @@ export {
   changeDoctorPassword,
   sendForgotPasswordCodeForStaff,
   verifyForgotPasswordCodeForStaff,
-
-
   createGSTEntry,
   createInsuranceEntry,
   createKamgarEntry,
   createRoyaltyEntry,
   createITEntry,
-
   getGSTEntryById,
   getInsuranceEntryById,
   getKamgarEntryById,
   deleteGSTEntry,
   deleteInsuranceEntry,
   deleteKamgarEntry,
-
-
-createAgreementStatus,
-getAgreementStatus,
-updateAgreementStatus,
-deleteAgreementStatus,
+  createAgreementStatus,
+  getAgreementStatus,
+  updateAgreementStatus,
+  deleteAgreementStatus,
 };

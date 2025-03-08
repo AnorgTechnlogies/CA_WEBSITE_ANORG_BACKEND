@@ -247,7 +247,14 @@ const addGrampanchayatSchema = Joi.object({
       "string.max": "Password must not exceed 20 characters.",
       "string.pattern.base": "Password must contain at least one uppercase letter, one number, and one special character.",
     }),
+
+  gpAgreementAmount: Joi.number().min(1).required().messages({
+    "number.base": "Agreement Amount must be a valid number.",
+    "number.min": "Agreement Amount must be at least 1.",
+    "any.required": "Agreement Amount is required.",
+  }),
 });
+
 
 const updateDoctorSchema = Joi.object({
   doctorName: Joi.string().required(),
