@@ -2,19 +2,19 @@ import mongoose from "mongoose";
 
 // Create a schema for individual deduction entries
 const deductionEntrySchema = new mongoose.Schema({
-  amount: { type: Number, required: true },
-  partyName: { type: String, required: true },
+  amount: { type: Number, },
+  partyName: { type: String, },
   // Additional fields specific to each type can be added here
   pan: { type: String } // For IT deductions
 });
 
 const allDeductionSchema = new mongoose.Schema({
-  date: { type: Date, required: true },
-  gramadhikariName: { type: String, required: true },
+  date: { type: Date, },
+  gramadhikariName: { type: String, },
   paymentMode: {
     type: String,
     enum: ["online", "cheque"],
-    required: true,
+ 
   },
 
   // Multiple entries for each deduction type
@@ -41,7 +41,7 @@ const allDeductionSchema = new mongoose.Schema({
   grampanchayats: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: "Grampanchayat",
-    required: true,
+   
   }],
 });
 
