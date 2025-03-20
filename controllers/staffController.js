@@ -899,28 +899,28 @@ const addDeduction = async (req, res) => {
   
   try {
     // Validate required fields
-    if (!date || !gramadhikariName || !paymentMode || !grampanchayats) {
-      return res.status(400).json({
-        success: false,
-        message: "Date, Gram Adhikari Name, payment mode, and Grampanchayats are required",
-      });
-    }
+    // if (!date || !gramadhikariName || !paymentMode || !grampanchayats) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Date, Gram Adhikari Name, payment mode, and Grampanchayats are required",
+    //   });
+    // }
     
-    // Validate paymentMode
-    if (!["online", "cheque"].includes(paymentMode)) {
-      return res.status(400).json({
-        success: false,
-        message: "Payment mode must be either 'online' or 'cheque'",
-      });
-    }
+    // // Validate paymentMode
+    // if (!["online", "cheque"].includes(paymentMode)) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Payment mode must be either 'online' or 'cheque'",
+    //   });
+    // }
     
-    // If paymentMode is cheque, checkNo is required
-    if (paymentMode === "cheque" && !checkNo) {
-      return res.status(400).json({
-        success: false,
-        message: "Check number is required for cheque payments",
-      });
-    }
+    // // If paymentMode is cheque, checkNo is required
+    // if (paymentMode === "cheque" && !checkNo) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Check number is required for cheque payments",
+    //   });
+    // }
     
     // Verify if at least one deduction type has entries
     const hasDeductions = (
