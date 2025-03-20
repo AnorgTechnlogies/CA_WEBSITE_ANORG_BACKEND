@@ -10,7 +10,7 @@ const deductionEntrySchema = new mongoose.Schema({
 
 const allDeductionSchema = new mongoose.Schema({
   date: { type: Date, required: true },
-  gstNo: { type: String, required: true },
+  gramadhikariName: { type: String, required: true },
   paymentMode: {
     type: String,
     enum: ["online", "cheque"],

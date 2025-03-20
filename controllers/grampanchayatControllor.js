@@ -1,16 +1,11 @@
 import jwt from "jsonwebtoken";
 import { loginGrampanchatSchema } from "../middleware/validator.js";
-// import GSTSModel from "../models/GSTSModel.js";
-import KamgarModel from "../models/KamgarModel.js";
-import { ITModel } from "../models/iTModel.js";
-import  { RoyaltyModel } from "../models/royaltyModel.js";
-import InsuranceModel from "../models/InsuranceModel.js";
 import GrampanchayatModel from "../models/grampanchayatModel.js";
 import {
   comparePassword,
 } from "../utils/hashing.js"; // assuming you have these utility functions
 import mongoose from "mongoose";
-import GSTModel from "../models/GSTSModel.js";
+import allDeductionModel from "../models/allDeductionModel.js";
 
 const loginGrampanchayat = async (req, res) => {
   const { gstNo, grampanchayatPassword } = req.body;
@@ -114,13 +109,17 @@ const getGrampanchayat = async (req, res) => {
   }
 };
 
+const logoutGrampanchayat = async (req, res) => {
+  res
+    .clearCookie("Authorization")
+    .status(200)
+    .json({ success: true, message: "Logged out successfully " });
+};
+
 const getGrampanchayatDashboardData = async (req, res) => {
-
   const grampanchayatId = req.Grampanchayat.gpId;
-
+  
   try {
-    // const { grampanchayatId } = req.params;
-
     // Validate grampanchayatId
     if (!mongoose.Types.ObjectId.isValid(grampanchayatId)) {
       return res.status(400).json({
@@ -128,48 +127,102 @@ const getGrampanchayatDashboardData = async (req, res) => {
         message: "Invalid Grampanchayat ID format"
       });
     }
-
+    
     // Convert string ID to ObjectId
     const gramPanchayatObjectId = new mongoose.Types.ObjectId(grampanchayatId);
-
-    // Fetch data from all models with the specified conditions
-    const [gstRecords, insuranceRecords, itRecords, kamgarRecords, royaltyRecords] = await Promise.all([
-      // GST Records
-      GSTModel.find({
-        grampanchayats: gramPanchayatObjectId,
-        seenByAdmin: true,
-        'uploadDocumentbyAdmin.url': { $exists: true, $ne: "" }
-      }).sort({ date: -1 }),
+    
+    // Fetch all deduction records for this grampanchayat
+    const allDeductions = await allDeductionModel.find({
+      grampanchayats: gramPanchayatObjectId,
+      seenByAdmin: true,
+      'uploadDocumentbyAdmin.url': { $exists: true, $ne: "" }
+    }).sort({ date: -1 });
+    
+    // Initialize arrays for each deduction type
+    const gstRecords = [];
+    const insuranceRecords = [];
+    const itRecords = [];
+    const kamgarRecords = [];
+    const royaltyRecords = [];
+    
+    // Process and categorize records
+    allDeductions.forEach(deduction => {
+      // Handle GST entries
+      if (deduction.gstEntries && deduction.gstEntries.length > 0) {
+        deduction.gstEntries.forEach(entry => {
+          gstRecords.push({
+            ...entry.toObject(),
+            date: deduction.date,
+            gramadhikariName: deduction.gramadhikariName,
+            paymentMode: deduction.paymentMode,
+            document: deduction.document,
+            uploadDocumentbyAdmin: deduction.uploadDocumentbyAdmin,
+            _id: deduction._id
+          });
+        });
+      }
       
-      // Insurance Records
-      InsuranceModel.find({
-        grampanchayats: gramPanchayatObjectId,
-        seenByAdmin: true,
-        'uploadDocumentbyAdmin.url': { $exists: true, $ne: "" }
-      }).sort({ date: -1 }),
+      // Handle Insurance entries
+      if (deduction.insuranceEntries && deduction.insuranceEntries.length > 0) {
+        deduction.insuranceEntries.forEach(entry => {
+          insuranceRecords.push({
+            ...entry.toObject(),
+            date: deduction.date,
+            gramadhikariName: deduction.gramadhikariName,
+            paymentMode: deduction.paymentMode,
+            document: deduction.document,
+            uploadDocumentbyAdmin: deduction.uploadDocumentbyAdmin,
+            _id: deduction._id
+          });
+        });
+      }
       
-      // IT Records
-      ITModel.find({
-        grampanchayats: gramPanchayatObjectId,
-        seenByAdmin: true,
-        'uploadDocumentbyAdmin.url': { $exists: true, $ne: "" }
-      }).sort({ date: -1 }),
+      // Handle IT entries
+      if (deduction.itEntries && deduction.itEntries.length > 0) {
+        deduction.itEntries.forEach(entry => {
+          itRecords.push({
+            ...entry.toObject(),
+            date: deduction.date,
+            gramadhikariName: deduction.gramadhikariName,
+            paymentMode: deduction.paymentMode,
+            document: deduction.document,
+            uploadDocumentbyAdmin: deduction.uploadDocumentbyAdmin,
+            _id: deduction._id
+          });
+        });
+      }
       
-      // Kamgar Records
-      KamgarModel.find({
-        grampanchayats: gramPanchayatObjectId,
-        seenByAdmin: true,
-        'uploadDocumentbyAdmin.url': { $exists: true, $ne: "" }
-      }).sort({ date: -1 }),
+      // Handle Kamgar entries
+      if (deduction.kamgaarEntries && deduction.kamgaarEntries.length > 0) {
+        deduction.kamgaarEntries.forEach(entry => {
+          kamgarRecords.push({
+            ...entry.toObject(),
+            date: deduction.date,
+            gramadhikariName: deduction.gramadhikariName,
+            paymentMode: deduction.paymentMode,
+            document: deduction.document,
+            uploadDocumentbyAdmin: deduction.uploadDocumentbyAdmin,
+            _id: deduction._id
+          });
+        });
+      }
       
-      // Royalty Records
-      RoyaltyModel.find({
-        grampanchayats: gramPanchayatObjectId,
-        seenByAdmin: true,
-        'uploadDocumentbyAdmin.url': { $exists: true, $ne: "" }
-      }).sort({ date: -1 })
-    ]);
-
+      // Handle Royalty entries
+      if (deduction.royaltyEntries && deduction.royaltyEntries.length > 0) {
+        deduction.royaltyEntries.forEach(entry => {
+          royaltyRecords.push({
+            ...entry.toObject(),
+            date: deduction.date,
+            gramadhikariName: deduction.gramadhikariName,
+            paymentMode: deduction.paymentMode,
+            document: deduction.document,
+            uploadDocumentbyAdmin: deduction.uploadDocumentbyAdmin,
+            _id: deduction._id
+          });
+        });
+      }
+    });
+    
     // Calculate total amounts for each category
     const totalGST = gstRecords.reduce((sum, record) => sum + record.amount, 0);
     const totalInsurance = insuranceRecords.reduce((sum, record) => sum + record.amount, 0);
@@ -177,7 +230,7 @@ const getGrampanchayatDashboardData = async (req, res) => {
     const totalKamgar = kamgarRecords.reduce((sum, record) => sum + record.amount, 0);
     const totalRoyalty = royaltyRecords.reduce((sum, record) => sum + record.amount, 0);
     const grandTotal = totalGST + totalInsurance + totalIT + totalKamgar + totalRoyalty;
-
+    
     return res.status(200).json({
       success: true,
       data: {
@@ -207,8 +260,8 @@ const getGrampanchayatDashboardData = async (req, res) => {
           count: royaltyRecords.length
         },
         summary: {
-          totalRecords: gstRecords.length + insuranceRecords.length + itRecords.length + 
-                         kamgarRecords.length + royaltyRecords.length,
+          totalRecords: gstRecords.length + insuranceRecords.length + itRecords.length +
+                        kamgarRecords.length + royaltyRecords.length,
           grandTotal: grandTotal
         }
       }
@@ -226,4 +279,5 @@ export {
   loginGrampanchayat,
   getGrampanchayat,
   getGrampanchayatDashboardData,
+  logoutGrampanchayat,
 };

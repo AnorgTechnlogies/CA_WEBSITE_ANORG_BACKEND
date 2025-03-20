@@ -11,13 +11,7 @@ import {
   changePasswordSchema,
   sendVerificationCodeSchema,
   acceptCodeSchema,
-  acceptFPCodeSchema,
   addGrampanchayatSchema,
-  gstSchema,
-  insuranceSchema,
-  kamgarSchema,
-  royaltySchema,
-  itSchema,
   sendForgotPasswordCodeForStaffSchema,
   acceptFPCodeForStaffSchema,
 } from "../middleware/validator.js";
@@ -881,19 +875,14 @@ const verifyForgotPasswordCodeForStaff = async (req, res) => {
   }
 };
 
-import GSTModel from "../models/GSTSModel.js";
-import InsuranceModel from "../models/InsuranceModel.js";
-import KamgarModel from "../models/KamgarModel.js";
 import staffModel from "../models/staffModel.js";
 import GrampanchayatModel from "../models/grampanchayatModel.js";
-import { RoyaltyModel } from "../models/royaltyModel.js";
-import { ITModel } from "../models/ITModel.js";
 import { AgreementStatusModel } from "../models/agreementStatusModel.js";
 
 const addDeduction = async (req, res) => {
   const {
     date,
-    gstNo,
+    gramadhikariName,
     paymentMode,
     gstEntries,
     royaltyEntries,
@@ -910,10 +899,10 @@ const addDeduction = async (req, res) => {
   
   try {
     // Validate required fields
-    if (!date || !gstNo || !paymentMode || !grampanchayats) {
+    if (!date || !gramadhikariName || !paymentMode || !grampanchayats) {
       return res.status(400).json({
         success: false,
-        message: "Date, GST number, payment mode, and grampanchayats are required",
+        message: "Date, Gram Adhikari Name, payment mode, and Grampanchayats are required",
       });
     }
     
@@ -990,7 +979,7 @@ const addDeduction = async (req, res) => {
     // Prepare deduction data
     const deductionData = {
       date: new Date(date),
-      gstNo,
+      gramadhikariName,
       paymentMode,
       gstEntries: parseDeductionEntries(gstEntries),
       royaltyEntries: parseDeductionEntries(royaltyEntries),
@@ -1032,6 +1021,169 @@ const addDeduction = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message || "Internal Server Error",
+    });
+  }
+};
+
+const getAllDeductionsByGrampanchayatId = async (req, res) => {
+  try {
+    // Get grampanchayatId from path parameters
+    const { grampanchayatId } = req.params;
+
+    // Get query parameters for filtering
+    const { 
+      startDate, 
+      endDate, 
+      gstNo, 
+      paymentMode,
+      seenByAdmin,
+      sortBy = 'date',
+      sortOrder = 'desc',
+      page = 1,
+      limit = 10
+    } = req.query;
+
+    // Build filter object
+    const filter = {};
+
+    // Add grampanchayatId filter - this is the key change
+    if (grampanchayatId) {
+      filter.grampanchayats = new mongoose.Types.ObjectId(grampanchayatId);
+    }
+
+    // Add date range filter if provided
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) {
+        // Set end date to end of day
+        const endOfDay = new Date(endDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        filter.date.$lte = endOfDay;
+      }
+    }
+
+    // Add GST number filter if provided
+    if (gstNo) filter.gstNo = gstNo;
+
+    // Add payment mode filter if provided
+    if (paymentMode && ["online", "cheque"].includes(paymentMode)) {
+      filter.paymentMode = paymentMode;
+    }
+
+    // Add seenByAdmin filter if provided
+    if (seenByAdmin !== undefined) {
+      filter.seenByAdmin = seenByAdmin === 'true';
+    }
+
+    // Calculate pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const limitValue = parseInt(limit);
+
+    // Determine sort direction
+    const sortDirection = sortOrder === 'asc' ? 1 : -1;
+    const sortOptions = {};
+    sortOptions[sortBy] = sortDirection;
+
+    // Get total count for pagination
+    const totalCount = await allDeductionModel.countDocuments(filter);
+
+    // Fetch deductions with pagination and sorting
+    const deductions = await allDeductionModel.find(filter)
+      .populate('grampanchayats', 'grampanchayat district tahsil state') // Updated field names based on your schema
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(limitValue);
+
+    // Calculate total amounts by deduction type
+    const totalAmounts = await allDeductionModel.aggregate([
+      { $match: filter },
+      { $group: {
+          _id: null,
+          totalGST: {
+            $sum: {
+              $reduce: {
+                input: "$gstEntries",
+                initialValue: 0,
+                in: { $add: ["$$value", "$$this.amount"] }
+              }
+            }
+          },
+          totalRoyalty: {
+            $sum: {
+              $reduce: {
+                input: "$royaltyEntries",
+                initialValue: 0,
+                in: { $add: ["$$value", "$$this.amount"] }
+              }
+            }
+          },
+          totalIT: {
+            $sum: {
+              $reduce: {
+                input: "$itEntries",
+                initialValue: 0,
+                in: { $add: ["$$value", "$$this.amount"] }
+              }
+            }
+          },
+          totalKamgaar: {
+            $sum: {
+              $reduce: {
+                input: "$kamgaarEntries",
+                initialValue: 0,
+                in: { $add: ["$$value", "$$this.amount"] }
+              }
+            }
+          },
+          totalInsurance: {
+            $sum: {
+              $reduce: {
+                input: "$insuranceEntries",
+                initialValue: 0,
+                in: { $add: ["$$value", "$$this.amount"] }
+              }
+            }
+          },
+          grandTotal: { $sum: "$totalAmount" }
+        }
+      }
+    ]);
+
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalCount / limitValue);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+    
+    // Return the response
+    res.status(200).json({
+      success: true,
+      message: "Deductions fetched successfully",
+      data: {
+        deductions,
+        pagination: {
+          total: totalCount,
+          totalPages,
+          currentPage: parseInt(page),
+          limit: limitValue,
+          hasNextPage,
+          hasPrevPage
+        },
+        summary: totalAmounts.length > 0 ? totalAmounts[0] : {
+          totalGST: 0,
+          totalRoyalty: 0,
+          totalIT: 0,
+          totalKamgaar: 0,
+          totalInsurance: 0,
+          grandTotal: 0
+        }
+      }
+    });
+  } catch (error) {
+    console.error("Error in getAllDeductions:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Internal Server Error"
     });
   }
 };
@@ -1257,572 +1409,6 @@ const getAllDeductions = async (req, res) => {
 };
 
 
-
-
-
-
-
-
-const createGSTEntry = async (req, res) => {
-  const { grampanchayatId } = req.params;
-  try {
-    const { error, value } = gstSchema.validate(req.body);
-
-    if (error) {
-      return res.status(400).json({
-        success: false,
-        message: error.details[0].message,
-      });
-    }
-
-    const { date, gstNo, gstPartyName, amount, checkNo, pfmsDate } = value;
-
-    const gstEntry = new GSTModel({
-      date,
-      gstNo,
-      gstPartyName,
-      amount,
-      checkNo,
-      pfmsDate,
-      grampanchayats: [grampanchayatId],
-      document: {
-        public_id: "",
-        url: "",
-      },
-    });
-
-    if (req.file) {
-      const { path: documentTempPath } = req.file;
-
-      if (documentTempPath) {
-        try {
-          const cloudinaryResponse = await cloudinary.uploader.upload(
-            documentTempPath,
-            { folder: "GST_DOCUMENTS" }
-          );
-
-          if (!cloudinaryResponse || cloudinaryResponse.error) {
-            fs.unlinkSync(documentTempPath);
-            return res.json({
-              success: false,
-              message: "Failed to upload document to Cloudinary",
-            });
-          }
-
-          gstEntry.document.public_id = cloudinaryResponse.public_id;
-          gstEntry.document.url = cloudinaryResponse.secure_url;
-
-          fs.unlinkSync(documentTempPath);
-        } catch (error) {
-          if (fs.existsSync(documentTempPath)) {
-            fs.unlinkSync(documentTempPath);
-          }
-          return res.json({
-            success: false,
-            message: "An error occurred while uploading the document",
-          });
-        }
-      }
-    }
-
-    const savedEntry = await gstEntry.save();
-    const populatedEntry = await savedEntry.populate("grampanchayats");
-
-    res.status(201).json({
-      success: true,
-      message: "GST entry created successfully",
-      data: populatedEntry,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error creating GST entry",
-      error: error.message,
-    });
-  }
-};
-
-const createInsuranceEntry = async (req, res) => {
-  const { grampanchayatId } = req.params;
-  try {
-    const { error, value } = insuranceSchema.validate(req.body);
-
-    if (error) {
-      return res.status(400).json({
-        success: false,
-        message: error.details[0].message,
-      });
-    }
-
-    const { date, amount } = value;
-
-    const insuranceEntry = new InsuranceModel({
-      date,
-      amount,
-      grampanchayats: [grampanchayatId],
-      document: {
-        public_id: "",
-        url: "",
-      },
-    });
-
-    if (req.file) {
-      const { path: documentTempPath } = req.file;
-
-      if (documentTempPath) {
-        try {
-          const cloudinaryResponse = await cloudinary.uploader.upload(
-            documentTempPath,
-            { folder: "INSURANCE_DOCUMENTS" }
-          );
-
-          if (!cloudinaryResponse || cloudinaryResponse.error) {
-            fs.unlinkSync(documentTempPath);
-            return res.json({
-              success: false,
-              message: "Failed to upload document to Cloudinary",
-            });
-          }
-
-          insuranceEntry.document.public_id = cloudinaryResponse.public_id;
-          insuranceEntry.document.url = cloudinaryResponse.secure_url;
-
-          fs.unlinkSync(documentTempPath);
-        } catch (error) {
-          if (fs.existsSync(documentTempPath)) {
-            fs.unlinkSync(documentTempPath);
-          }
-          return res.json({
-            success: false,
-            message: "An error occurred while uploading the document",
-          });
-        }
-      }
-    }
-
-    const savedEntry = await insuranceEntry.save();
-    const populatedEntry = await savedEntry.populate("grampanchayats");
-
-    res.status(201).json({
-      success: true,
-      message: "Insurance entry created successfully",
-      data: populatedEntry,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error creating insurance entry",
-      error: error.message,
-    });
-  }
-};
-
-const createKamgarEntry = async (req, res) => {
-  const { grampanchayatId } = req.params;
-  try {
-    const { error, value } = kamgarSchema.validate(req.body);
-
-    if (error) {
-      return res.status(400).json({
-        success: false,
-        message: error.details[0].message,
-      });
-    }
-
-    const { date, amount } = req.body;
-
-    const kamgarEntry = new KamgarModel({
-      date,
-      amount,
-      grampanchayats: [grampanchayatId],
-      document: {
-        public_id: "",
-        url: "",
-      },
-    });
-
-    if (req.file) {
-      const { path: documentTempPath } = req.file;
-
-      if (documentTempPath) {
-        try {
-          const cloudinaryResponse = await cloudinary.uploader.upload(
-            documentTempPath,
-            { folder: "KAMGAR_DOCUMENTS" }
-          );
-
-          if (!cloudinaryResponse || cloudinaryResponse.error) {
-            fs.unlinkSync(documentTempPath);
-            return res.json({
-              success: false,
-              message: "Failed to upload document to Cloudinary",
-            });
-          }
-
-          kamgarEntry.document.public_id = cloudinaryResponse.public_id;
-          kamgarEntry.document.url = cloudinaryResponse.secure_url;
-
-          fs.unlinkSync(documentTempPath);
-        } catch (error) {
-          if (fs.existsSync(documentTempPath)) {
-            fs.unlinkSync(documentTempPath);
-          }
-          return res.json({
-            success: false,
-            message: "An error occurred while uploading the document",
-          });
-        }
-      }
-    }
-
-    const savedEntry = await kamgarEntry.save();
-    const populatedEntry = await savedEntry.populate("grampanchayats");
-
-    res.status(201).json({
-      success: true,
-      message: "Kamgar entry created successfully",
-      data: populatedEntry,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error creating kamgar entry",
-      error: error.message,
-    });
-  }
-};
-
-const createRoyaltyEntry = async (req, res) => {
-  const { grampanchayatId } = req.params;
-  try {
-    const { error, value } = royaltySchema.validate(req.body);
-
-    if (error) {
-      return res.status(400).json({
-        success: false,
-        message: error.details[0].message,
-      });
-    }
-
-    const { date, amount } = value;
-
-    const royaltyEntry = new RoyaltyModel({
-      date,
-      amount,
-      grampanchayats: [grampanchayatId],
-      document: {
-        public_id: "",
-        url: "",
-      },
-    });
-
-    if (req.file) {
-      const { path: documentTempPath } = req.file;
-
-      if (documentTempPath) {
-        try {
-          const cloudinaryResponse = await cloudinary.uploader.upload(
-            documentTempPath,
-            { folder: "ROYALTY_DOCUMENTS" }
-          );
-
-          if (!cloudinaryResponse || cloudinaryResponse.error) {
-            fs.unlinkSync(documentTempPath);
-            return res.json({
-              success: false,
-              message: "Failed to upload document to Cloudinary",
-            });
-          }
-
-          royaltyEntry.document.public_id = cloudinaryResponse.public_id;
-          royaltyEntry.document.url = cloudinaryResponse.secure_url;
-
-          fs.unlinkSync(documentTempPath);
-        } catch (error) {
-          if (fs.existsSync(documentTempPath)) {
-            fs.unlinkSync(documentTempPath);
-          }
-          return res.json({
-            success: false,
-            message: "An error occurred while uploading the document",
-          });
-        }
-      }
-    }
-
-    const savedEntry = await royaltyEntry.save();
-    const populatedEntry = await savedEntry.populate("grampanchayats");
-
-    res.status(201).json({
-      success: true,
-      message: "Royalty entry created successfully",
-      data: populatedEntry,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error creating royalty entry",
-      error: error.message,
-    });
-  }
-};
-
-const createITEntry = async (req, res) => {
-  const { grampanchayatId } = req.params;
-  try {
-    const { error, value } = itSchema.validate(req.body);
-
-    if (error) {
-      return res.status(400).json({
-        success: false,
-        message: error.details[0].message,
-      });
-    }
-
-    const { date, partyName, pan, amount } = value;
-
-    const itEntry = new ITModel({
-      date,
-      partyName,
-      pan,
-      amount,
-      grampanchayats: [grampanchayatId],
-      document: {
-        public_id: "",
-        url: "",
-      },
-    });
-
-    if (req.file) {
-      const { path: documentTempPath } = req.file;
-
-      if (documentTempPath) {
-        try {
-          const cloudinaryResponse = await cloudinary.uploader.upload(
-            documentTempPath,
-            { folder: "IT_DOCUMENTS" }
-          );
-
-          if (!cloudinaryResponse || cloudinaryResponse.error) {
-            fs.unlinkSync(documentTempPath);
-            return res.json({
-              success: false,
-              message: "Failed to upload document to Cloudinary",
-            });
-          }
-
-          itEntry.document.public_id = cloudinaryResponse.public_id;
-          itEntry.document.url = cloudinaryResponse.secure_url;
-
-          fs.unlinkSync(documentTempPath);
-        } catch (error) {
-          if (fs.existsSync(documentTempPath)) {
-            fs.unlinkSync(documentTempPath);
-          }
-          return res.json({
-            success: false,
-            message: "An error occurred while uploading the document",
-          });
-        }
-      }
-    }
-
-    const savedEntry = await itEntry.save();
-    const populatedEntry = await savedEntry.populate("grampanchayats");
-
-    res.status(201).json({
-      success: true,
-      message: "IT entry created successfully",
-      data: populatedEntry,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error creating IT entry",
-      error: error.message,
-    });
-  }
-};
-
-const getEntriesByGrampanchayat = async (req, res) => {
-  const { grampanchayatId } = req.params;
-
-  try {
-    const [
-      gstEntries,
-      insuranceEntries,
-      kamgarEntries,
-      royaltyEntries,
-      itEntries,
-    ] = await Promise.all([
-      GSTModel.find({ grampanchayats: grampanchayatId }).populate(
-        "grampanchayats"
-      ),
-      InsuranceModel.find({ grampanchayats: grampanchayatId }).populate(
-        "grampanchayats"
-      ),
-      KamgarModel.find({ grampanchayats: grampanchayatId }).populate(
-        "grampanchayats"
-      ),
-      RoyaltyModel.find({ grampanchayats: grampanchayatId }).populate(
-        "grampanchayats"
-      ),
-      ITModel.find({ grampanchayats: grampanchayatId }).populate(
-        "grampanchayats"
-      ),
-    ]);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        gst: gstEntries,
-        insurance: insuranceEntries,
-        kamgar: kamgarEntries,
-        royalty: royaltyEntries,
-        it: itEntries,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
-
-// Get entry by ID
-const getGSTEntryById = async (req, res) => {
-  try {
-    const entry = await GSTModel.findById(req.params.id);
-    if (!entry) {
-      return res.status(404).json({
-        success: false,
-        message: "GST entry not found",
-      });
-    }
-    res.status(200).json({
-      success: true,
-      data: entry,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error fetching GST entry",
-      error: error.message,
-    });
-  }
-};
-
-const getInsuranceEntryById = async (req, res) => {
-  try {
-    const entry = await InsuranceModel.findById(req.params.id);
-    if (!entry) {
-      return res.status(404).json({
-        success: false,
-        message: "Insurance entry not found",
-      });
-    }
-    res.status(200).json({
-      success: true,
-      data: entry,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error fetching insurance entry",
-      error: error.message,
-    });
-  }
-};
-
-const getKamgarEntryById = async (req, res) => {
-  try {
-    const entry = await KamgarModel.findById(req.params.id);
-    if (!entry) {
-      return res.status(404).json({
-        success: false,
-        message: "Kamgar entry not found",
-      });
-    }
-    res.status(200).json({
-      success: true,
-      data: entry,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error fetching kamgar entry",
-      error: error.message,
-    });
-  }
-};
-
-// Delete entries
-const deleteGSTEntry = async (req, res) => {
-  try {
-    const deletedEntry = await GSTModel.findByIdAndDelete(req.params.id);
-    if (!deletedEntry) {
-      return res.status(404).json({
-        success: false,
-        message: "GST entry not found",
-      });
-    }
-    res.status(200).json({
-      success: true,
-      message: "GST entry deleted successfully",
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error deleting GST entry",
-      error: error.message,
-    });
-  }
-};
-
-const deleteInsuranceEntry = async (req, res) => {
-  try {
-    const deletedEntry = await InsuranceModel.findByIdAndDelete(req.params.id);
-    if (!deletedEntry) {
-      return res.status(404).json({
-        success: false,
-        message: "Insurance entry not found",
-      });
-    }
-    res.status(200).json({
-      success: true,
-      message: "Insurance entry deleted successfully",
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error deleting insurance entry",
-      error: error.message,
-    });
-  }
-};
-
-const deleteKamgarEntry = async (req, res) => {
-  try {
-    const deletedEntry = await KamgarModel.findByIdAndDelete(req.params.id);
-    if (!deletedEntry) {
-      return res.status(404).json({
-        success: false,
-        message: "Kamgar entry not found",
-      });
-    }
-    res.status(200).json({
-      success: true,
-      message: "Kamgar entry deleted successfully",
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error deleting kamgar entry",
-      error: error.message,
-    });
-  }
-};
 
 const createAgreementStatus = async (req, res) => {
   try {
@@ -2055,7 +1641,8 @@ export {
 
   addDeduction,
   getAllDeductions,
-
+  getAllDeductionsByGrampanchayatId,
+  
 
   loginStaff,
   getStaff,
@@ -2069,17 +1656,6 @@ export {
   changeDoctorPassword,
   sendForgotPasswordCodeForStaff,
   verifyForgotPasswordCodeForStaff,
-  createGSTEntry,
-  createInsuranceEntry,
-  createKamgarEntry,
-  createRoyaltyEntry,
-  createITEntry,
-  getGSTEntryById,
-  getInsuranceEntryById,
-  getKamgarEntryById,
-  deleteGSTEntry,
-  deleteInsuranceEntry,
-  deleteKamgarEntry,
   createAgreementStatus,
   getAgreementStatus,
   updateAgreementStatus,

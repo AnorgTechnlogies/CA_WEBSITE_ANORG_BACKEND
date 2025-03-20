@@ -39,15 +39,21 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-
 app.use("/api/admin", adminRouter);
 app.use("/api/staff", staffRouter);
 app.use("/api/grampanchayat", grampanchayatRouter);
 
+app.get("/api/testing", (req, res) => {
+  try {
+    res.status(200).json({ message: "API is working" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 app.listen(process.env.PORT, () => {
   console.log(`listening... on port ${process.env.PORT}`);
 });
 
 config({ path: "./config/config.env" });
-

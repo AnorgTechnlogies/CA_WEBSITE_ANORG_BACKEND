@@ -14,23 +14,9 @@ import {
   getAllGrampanchayats,
   getAllStaff,
   getAgreementsByGrampanchayat,
-  getAllInsuranceEntries,
-  getAllGSTEntries,
-  getAllKamgarEntries,
-  getAllITEntries,
-  getAllRoyaltyEntries,
-  updateGSTEntry,
-  updateITEntry,
-  updateInsuranceEntry,
-  updateKamgarEntry,
-  updateRoyaltyEntry,
   getExportAllDeductionData,
-  updateGSTDocumentByAdmin,
-  updatITDocumentByAdmin,
-  updateRoyaltyDocumentByAdmin,
-  updateInsuranceDocumentByAdmin,
-  updateKaamgarDocumentByAdmin,
   getAllDeductionsByGrampanchayatId,
+  updateDeductionByAdmin,
 } from "../controllers/adminController.js";
 // import upload from '../utils/multer.js';
 import { upload } from "../middleware/multer.js";
@@ -49,52 +35,7 @@ adminRouter.post("/add-gramPanchayat", upload.single("gpImage"), addGrampanchaya
 adminRouter.get("/allGrampanchayats", getAllGrampanchayats);
 
 adminRouter.get("/getAllDeductions/:grampanchayatId", getAllDeductionsByGrampanchayatId);
-
-adminRouter.get("/gst/:grampanchayatId", adminIdentifier, getAllGSTEntries);
-adminRouter.get("/insurance/:grampanchayatId", adminIdentifier, getAllInsuranceEntries);
-adminRouter.get("/kamgar/:grampanchayatId", adminIdentifier, getAllKamgarEntries);
-adminRouter.get("/iT/:grampanchayatId", adminIdentifier, getAllITEntries);
-adminRouter.get("/royalty/:grampanchayatId", adminIdentifier, getAllRoyaltyEntries);
-
-adminRouter.put("/updateGSTEntry/:id", adminIdentifier, updateGSTEntry);
-adminRouter.put("/updateITEntry/:id", adminIdentifier, updateITEntry);
-adminRouter.put("/updateInsuranceEntry/:id", adminIdentifier, updateInsuranceEntry);
-adminRouter.put("/updateKamgarEntry/:id", adminIdentifier, updateKamgarEntry);
-adminRouter.put("/updateRoyaltyEntry/:id", adminIdentifier, updateRoyaltyEntry);
-
-adminRouter.patch(
-  "/updateGSTDocumentByAdmin/:id",
-  upload.single("document"),
-  updateGSTDocumentByAdmin
-);
-
-adminRouter.patch(
-  "/updatITDocumentByAdmin/:id",
-  upload.single("document"),
-  updatITDocumentByAdmin
-);
-
-adminRouter.patch(
-  "/updateKaamgarDocumentByAdmin/:id",
-  upload.single("document"),
-  updateKaamgarDocumentByAdmin
-);
-
-
-adminRouter.patch(
-  "/updateRoyaltyDocumentByAdmin/:id",
-  upload.single("document"),
-  updateRoyaltyDocumentByAdmin
-);
-
-adminRouter.patch(
-  "/updateInsuranceDocumentByAdmin/:id",
-  upload.single("document"),
-  updateInsuranceDocumentByAdmin
-);
-
-
-
+adminRouter.put("/updateDeductionByAdmin/:deductionId",upload.single("recieptByAdmin"), updateDeductionByAdmin);
 
 adminRouter.get('/agreements/:grampanchayatId', getAgreementsByGrampanchayat);
 
